@@ -209,11 +209,32 @@ def display_model_aliases(model_aliases: Dict[str, str]) -> None:
 
 def main():
     init_args, call_args, display_alias = parse_args()
-    if display_alias:
-        model_alises = get_model_aliases(init_args['scope'])
-        display_model_aliases(model_alises)
-    else:
-        inferencer = MMPoseInferencer(**init_args)
+    
+    #if display_alias:
+    #    model_alises = get_model_aliases(init_args['scope'])
+    #    display_model_aliases(model_alises)
+    #else:
+
+    # print(init_args)
+    print(call_args)
+    # print(display_alias)
+
+    #import glob
+    #fnames_inputs = glob.glob('/mnt/s3-videos/*.mkv')
+    #print(len(fnames_inputs))
+
+    import pandas as pd
+    from tqdm import tqdm
+
+    df_meta = pd.read_csv('./df_meta_multipleRecordings.csv', index_col=0)
+
+    fnames_inputs = [ f'/mnt/s3-videos/{fname}' for fname in df_meta['fname_mkv'] ]
+
+    inferencer = MMPoseInferencer(**init_args)
+
+    for fname_input in tqdm( fnames_inputs[2:] ):
+        call_args['inputs'] = fname_input
+        # inferencer = MMPoseInferencer(**init_args)
         for _ in inferencer(**call_args):
             pass
 

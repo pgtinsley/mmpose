@@ -1,3 +1,6 @@
+df_meta*
+predictions*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
