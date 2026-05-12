@@ -38,11 +38,6 @@ def parse_args():
         action='store_true',
         help='Skip videos whose output file already exists.')
     parser.add_argument(
-        '--skip-missing-json',
-        action='store_true',
-        help='Skip input videos that do not have a matching JSON file. By '
-        'default, missing JSON files raise an error before processing starts.')
-    parser.add_argument(
         '--continue-on-error',
         action='store_true',
         help='Continue processing remaining videos if one video fails.')
@@ -160,13 +155,6 @@ def main():
             continue
         jobs.append((input_video, predictions_json, output_video))
 
-    if missing_json and not args.skip_missing_json:
-        message = '\n'.join(
-            f'  {video} -> expected {json_path}'
-            for video, json_path in missing_json)
-        raise FileNotFoundError(
-            f'Missing matching JSON files for {len(missing_json)} video(s):\n'
-            f'{message}')
     for input_video, predictions_json in missing_json:
         print(f'Skipping missing JSON: {input_video} -> {predictions_json}')
 
