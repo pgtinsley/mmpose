@@ -66,7 +66,8 @@ class MMPoseInferencer(BaseMMPoseInferencer):
     visualize_kwargs: set = {
         'return_vis', 'show', 'wait_time', 'draw_bbox', 'radius', 'thickness',
         'kpt_thr', 'vis_out_dir', 'skeleton_style', 'draw_heatmap',
-        'black_background', 'num_instances'
+        'black_background', 'num_instances', 'keypoint_ids',
+        'disable_skeleton', 'keypoint_color', 'marker_shape', 'marker_size'
     }
     postprocess_kwargs: set = {'pred_out_dir', 'return_datasample'}
 

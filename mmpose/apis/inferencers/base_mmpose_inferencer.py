@@ -3,6 +3,8 @@ import inspect
 import logging
 import mimetypes
 import os
+import shutil
+import subprocess
 from collections import defaultdict
 from typing import (Callable, Dict, Generator, Iterable, List, Optional,
                     Sequence, Tuple, Union)
@@ -51,7 +53,8 @@ class BaseMMPoseInferencer(BaseInferencer):
     forward_kwargs: set = set()
     visualize_kwargs: set = {
         'return_vis', 'show', 'wait_time', 'draw_bbox', 'radius', 'thickness',
-        'kpt_thr', 'vis_out_dir', 'black_background'
+        'kpt_thr', 'vis_out_dir', 'black_background', 'keypoint_ids',
+        'disable_skeleton', 'keypoint_color', 'marker_shape', 'marker_size'
     }
     postprocess_kwargs: set = {'pred_out_dir', 'return_datasample'}
 
@@ -197,6 +200,7 @@ class BaseMMPoseInferencer(BaseInferencer):
                     self.video_info = dict(
                         fps=video.fps,
                         name=os.path.basename(inputs),
+                        input_file=inputs,
                         writer=None,
                         width=video.width,
                         height=video.height,
@@ -269,6 +273,7 @@ class BaseMMPoseInferencer(BaseInferencer):
         self.video_info = dict(
             fps=fps,
             name='webcam.mp4',
+            input_file=None,
             writer=None,
             width=width,
             height=height,
@@ -677,6 +682,7 @@ class BaseMMPoseInferencer(BaseInferencer):
                 logger='current',
                 level=logging.INFO)
             self.video_info['writer'].release()
+            self._preserve_video_streams(out_file)
 
         # Save predictions
         if pred_out_dir:
@@ -689,3 +695,39 @@ class BaseMMPoseInferencer(BaseInferencer):
 
             mmengine.dump(
                 predictions, join_path(pred_out_dir, fname), indent='  ')
+
+    def _preserve_video_streams(self, out_file: str) -> None:
+        """Copy non-primary streams from the source video into the output."""
+        input_file = self.video_info.get('input_file')
+        if not input_file or not os.path.exists(input_file):
+            return
+
+        ffmpeg = shutil.which('ffmpeg')
+        if ffmpeg is None:
+            print_log(
+                'ffmpeg is not available; saved visualization video without '
+                'copying non-RGB streams from the source.',
+                logger='current',
+                level=logging.WARNING)
+            return
+
+        root, ext = os.path.splitext(out_file)
+        remuxed_file = f'{root}.streams{ext}'
+        command = [
+            ffmpeg, '-y', '-i', out_file, '-i', input_file, '-map', '0:v:0',
+            '-map', '1', '-map', '-1:v:0', '-c', 'copy', '-shortest',
+            remuxed_file
+        ]
+        result = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            print_log(
+                'Could not copy non-RGB streams from the source video; saved '
+                'the visualization video only.',
+                logger='current',
+                level=logging.WARNING)
+            if os.path.exists(remuxed_file):
+                os.remove(remuxed_file)
+            return
+
+        os.replace(remuxed_file, out_file)

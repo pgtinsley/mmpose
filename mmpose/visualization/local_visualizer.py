@@ -244,7 +244,13 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                              instances: InstanceData,
                              kpt_thr: float = 0.3,
                              show_kpt_idx: bool = False,
-                             skeleton_style: str = 'mmpose'):
+                             skeleton_style: str = 'mmpose',
+                             keypoint_ids: Optional[List[int]] = None,
+                             disable_skeleton: bool = False,
+                             keypoint_color: Optional[Union[str,
+                                                            Tuple[int]]] = None,
+                             marker_shape: str = 'circle',
+                             marker_size: Optional[int] = None):
         """Draw keypoints and skeletons (optional) of GT or prediction.
 
         Args:
@@ -257,6 +263,16 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                 Defaults to ``False``
             skeleton_style (str): Skeleton style selection. Defaults to
                 ``'mmpose'``
+            keypoint_ids (list[int], optional): Keypoint indices to draw. If
+                unset, all keypoints are drawn. Defaults to ``None``.
+            disable_skeleton (bool): Whether to skip skeleton links.
+                Defaults to ``False``.
+            keypoint_color (str or tuple, optional): Color used for every
+                drawn keypoint. Defaults to dataset keypoint colors.
+            marker_shape (str): Marker shape, either ``'circle'`` or
+                ``'square'``. Defaults to ``'circle'``.
+            marker_size (int, optional): Marker radius for circles or side
+                length for squares. Defaults to ``self.radius``.
 
         Returns:
             np.ndarray: the drawn image which channel is RGB.
@@ -264,10 +280,15 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
 
         if skeleton_style == 'openpose':
             return self._draw_instances_kpts_openpose(image, instances,
-                                                      kpt_thr)
+                                                      kpt_thr, keypoint_ids,
+                                                      disable_skeleton,
+                                                      keypoint_color,
+                                                      marker_shape,
+                                                      marker_size)
 
         self.set_image(image)
         img_h, img_w, _ = image.shape
+        selected_kpts = set(keypoint_ids) if keypoint_ids is not None else None
 
         if 'keypoints' in instances:
             keypoints = instances.get('transformed_keypoints',
@@ -281,7 +302,9 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
             for kpts, visible in zip(keypoints, keypoints_visible):
                 kpts = np.array(kpts, copy=False)
 
-                if self.kpt_color is None or isinstance(self.kpt_color, str):
+                if keypoint_color is not None:
+                    kpt_color = [keypoint_color] * len(kpts)
+                elif self.kpt_color is None or isinstance(self.kpt_color, str):
                     kpt_color = [self.kpt_color] * len(kpts)
                 elif len(self.kpt_color) == len(kpts):
                     kpt_color = self.kpt_color
@@ -292,7 +315,8 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                         f'that of keypoints ({len(kpts)})')
 
                 # draw links
-                if self.skeleton is not None and self.link_color is not None:
+                if (not disable_skeleton and self.skeleton is not None
+                        and self.link_color is not None):
                     if self.link_color is None or isinstance(
                             self.link_color, str):
                         link_color = [self.link_color] * len(self.skeleton)
@@ -305,6 +329,11 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                             f'that of skeleton ({len(self.skeleton)})')
 
                     for sk_id, sk in enumerate(self.skeleton):
+                        if (selected_kpts is not None and
+                                (sk[0] not in selected_kpts
+                                 or sk[1] not in selected_kpts)):
+                            continue
+
                         pos1 = (int(kpts[sk[0], 0]), int(kpts[sk[0], 1]))
                         pos2 = (int(kpts[sk[1], 0]), int(kpts[sk[1], 1]))
 
@@ -334,7 +363,9 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
 
                 # draw each point on image
                 for kid, kpt in enumerate(kpts):
-                    if visible[kid] < kpt_thr or kpt_color[kid] is None:
+                    if (selected_kpts is not None and kid not in selected_kpts
+                            or visible[kid] < kpt_thr
+                            or kpt_color[kid] is None):
                         # skip the point that should not be drawn
                         continue
 
@@ -344,13 +375,8 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                     transparency = self.alpha
                     if self.show_keypoint_weight:
                         transparency *= max(0, min(1, visible[kid]))
-                    self.draw_circles(
-                        kpt,
-                        radius=np.array([self.radius]),
-                        face_colors=color,
-                        edge_colors=color,
-                        alpha=transparency,
-                        line_widths=self.radius)
+                    self._draw_keypoint_marker(kpt, color, transparency,
+                                               marker_shape, marker_size)
                     if show_kpt_idx:
                         kpt_idx_coords = kpt + [self.radius, -self.radius]
                         self.draw_texts(
@@ -363,10 +389,46 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
 
         return self.get_image()
 
+    def _draw_keypoint_marker(self, kpt: np.ndarray, color, alpha: float,
+                              marker_shape: str,
+                              marker_size: Optional[int]) -> None:
+        """Draw one keypoint marker."""
+        size = marker_size if marker_size is not None else self.radius
+        if marker_shape == 'circle':
+            self.draw_circles(
+                kpt,
+                radius=np.array([size]),
+                face_colors=color,
+                edge_colors=color,
+                alpha=alpha,
+                line_widths=size)
+        elif marker_shape == 'square':
+            if self.backend == 'opencv' and isinstance(color, str):
+                color = mmcv.color_val(color)[::-1]
+            half_size = size / 2
+            x, y = kpt[:2]
+            square = np.array([
+                [x - half_size, y - half_size],
+                [x + half_size, y - half_size],
+                [x + half_size, y + half_size],
+                [x - half_size, y + half_size],
+            ],
+                              dtype=np.int32)
+            self.draw_polygons(square, edge_colors=color, alpha=alpha)
+        else:
+            raise ValueError('marker_shape must be either "circle" or '
+                             '"square".')
+
     def _draw_instances_kpts_openpose(self,
                                       image: np.ndarray,
                                       instances: InstanceData,
-                                      kpt_thr: float = 0.3):
+                                      kpt_thr: float = 0.3,
+                                      keypoint_ids: Optional[List[int]] = None,
+                                      disable_skeleton: bool = False,
+                                      keypoint_color: Optional[Union[str,
+                                                                     Tuple[int]]] = None,
+                                      marker_shape: str = 'circle',
+                                      marker_size: Optional[int] = None):
         """Draw keypoints and skeletons (optional) of GT or prediction in
         openpose style.
 
@@ -383,6 +445,7 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
 
         self.set_image(image)
         img_h, img_w, _ = image.shape
+        selected_kpts = set(keypoint_ids) if keypoint_ids is not None else None
 
         if 'keypoints' in instances:
             keypoints = instances.get('transformed_keypoints',
@@ -415,7 +478,9 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
             for kpts, visible in zip(keypoints, keypoints_visible):
                 kpts = np.array(kpts, copy=False)
 
-                if self.kpt_color is None or isinstance(self.kpt_color, str):
+                if keypoint_color is not None:
+                    kpt_color = [keypoint_color] * len(kpts)
+                elif self.kpt_color is None or isinstance(self.kpt_color, str):
                     kpt_color = [self.kpt_color] * len(kpts)
                 elif len(self.kpt_color) == len(kpts):
                     kpt_color = self.kpt_color
@@ -426,7 +491,8 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                         f'that of keypoints ({len(kpts)})')
 
                 # draw links
-                if self.skeleton is not None and self.link_color is not None:
+                if (not disable_skeleton and self.skeleton is not None
+                        and self.link_color is not None):
                     if self.link_color is None or isinstance(
                             self.link_color, str):
                         link_color = [self.link_color] * len(self.skeleton)
@@ -439,6 +505,11 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                             f'that of skeleton ({len(self.skeleton)})')
 
                     for sk_id, sk in enumerate(self.skeleton):
+                        if (selected_kpts is not None and
+                                (sk[0] not in selected_kpts
+                                 or sk[1] not in selected_kpts)):
+                            continue
+
                         pos1 = (int(kpts[sk[0], 0]), int(kpts[sk[0], 1]))
                         pos2 = (int(kpts[sk[1], 0]), int(kpts[sk[1], 1]))
 
@@ -488,12 +559,14 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
 
                 # draw each point on image
                 for kid, kpt in enumerate(kpts):
-                    if visible[kid] < kpt_thr or kpt_color[
-                            kid] is None or kpt_color[kid].sum() == 0:
+                    color = kpt_color[kid]
+                    if (selected_kpts is not None and kid not in selected_kpts
+                            or visible[kid] < kpt_thr or color is None
+                            or (not isinstance(color, str)
+                                and np.sum(color) == 0)):
                         # skip the point that should not be drawn
                         continue
 
-                    color = kpt_color[kid]
                     if not isinstance(color, str):
                         color = tuple(int(c) for c in color)
                     transparency = self.alpha
@@ -503,13 +576,9 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                     # draw smaller dots for face & hand keypoints
                     radius = self.radius // 2 if kid > 17 else self.radius
 
-                    self.draw_circles(
-                        kpt,
-                        radius=np.array([radius]),
-                        face_colors=color,
-                        edge_colors=color,
-                        alpha=transparency,
-                        line_widths=radius)
+                    self._draw_keypoint_marker(kpt, color, transparency,
+                                               marker_shape,
+                                               marker_size or radius)
 
         return self.get_image()
 
@@ -582,6 +651,12 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
                        wait_time: float = 0,
                        out_file: Optional[str] = None,
                        kpt_thr: float = 0.3,
+                       keypoint_ids: Optional[List[int]] = None,
+                       disable_skeleton: bool = False,
+                       keypoint_color: Optional[Union[str,
+                                                      Tuple[int]]] = None,
+                       marker_shape: str = 'circle',
+                       marker_size: Optional[int] = None,
                        step: int = 0) -> None:
         """Draw datasample and save to all backends.
 
@@ -631,7 +706,9 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
             if 'gt_instances' in data_sample:
                 gt_img_data = self._draw_instances_kpts(
                     gt_img_data, data_sample.gt_instances, kpt_thr,
-                    show_kpt_idx, skeleton_style)
+                    show_kpt_idx, skeleton_style, keypoint_ids,
+                    disable_skeleton, keypoint_color, marker_shape,
+                    marker_size)
                 if draw_bbox:
                     gt_img_data = self._draw_instances_bbox(
                         gt_img_data, data_sample.gt_instances)
@@ -652,7 +729,9 @@ class PoseLocalVisualizer(OpencvBackendVisualizer):
             if 'pred_instances' in data_sample:
                 pred_img_data = self._draw_instances_kpts(
                     pred_img_data, data_sample.pred_instances, kpt_thr,
-                    show_kpt_idx, skeleton_style)
+                    show_kpt_idx, skeleton_style, keypoint_ids,
+                    disable_skeleton, keypoint_color, marker_shape,
+                    marker_size)
                 if draw_bbox:
                     pred_img_data = self._draw_instances_bbox(
                         pred_img_data, data_sample.pred_instances)
