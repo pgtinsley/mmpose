@@ -11,6 +11,26 @@ POSE2D_SPECIFIC_ARGS = dict(
 )
 
 
+def parse_color(color: str):
+    """Parse a color from a name, '#RRGGBB', or 'R,G,B' string."""
+    if color is None:
+        return None
+
+    if color.startswith('#'):
+        color = color[1:]
+        if len(color) != 6:
+            raise ValueError('Hex colors must use the format #RRGGBB.')
+        return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
+
+    if ',' in color:
+        rgb = tuple(int(c) for c in color.split(','))
+        if len(rgb) != 3 or any(c < 0 or c > 255 for c in rgb):
+            raise ValueError('RGB colors must use the format R,G,B.')
+        return rgb
+
+    return color
+
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument(
@@ -156,6 +176,34 @@ def parse_args():
         type=int,
         default=1,
         help='Link thickness for visualization.')
+    parser.add_argument(
+        '--keypoint-ids',
+        type=int,
+        nargs='+',
+        default=None,
+        help='Only draw the specified keypoint indices. For COCO, the eyes '
+        'are indices 1 and 2.')
+    parser.add_argument(
+        '--disable-skeleton',
+        action='store_true',
+        help='Do not draw skeleton links between keypoints.')
+    parser.add_argument(
+        '--keypoint-color',
+        type=parse_color,
+        default=None,
+        help='Draw all visible keypoints with one color. Accepts color names, '
+        '#RRGGBB, or R,G,B.')
+    parser.add_argument(
+        '--marker-shape',
+        default='circle',
+        choices=['circle', 'square'],
+        help='Marker shape for keypoint visualization.')
+    parser.add_argument(
+        '--marker-size',
+        type=int,
+        default=None,
+        help='Marker size for visualization. For circles this is the radius; '
+        'for squares this is the side length. Defaults to --radius.')
     parser.add_argument(
         '--skeleton-style',
         default='mmpose',

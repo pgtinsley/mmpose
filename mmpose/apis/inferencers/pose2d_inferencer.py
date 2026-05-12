@@ -69,6 +69,11 @@ class Pose2DInferencer(BaseMMPoseInferencer):
         'skeleton_style',
         'draw_heatmap',
         'black_background',
+        'keypoint_ids',
+        'disable_skeleton',
+        'keypoint_color',
+        'marker_shape',
+        'marker_size',
     }
     postprocess_kwargs: set = {'pred_out_dir', 'return_datasample'}
 
