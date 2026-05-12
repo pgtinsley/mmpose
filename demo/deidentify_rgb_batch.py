@@ -66,7 +66,7 @@ def parse_args():
     parser.add_argument(
         '--eye-box-size',
         type=int,
-        default=8,
+        default=20,
         help='Fixed side length, in pixels, for each black eye square.')
     parser.add_argument(
         '--max-frames',
