@@ -7,8 +7,7 @@ Example:
         /path/to/jsons \
         /path/to/deidentified_mkvs \
         --rgb-stream v:0 \
-        --eye-box-size 8 \
-        --allow-missing-predictions
+        --eye-box-size 8
 """
 
 import argparse
@@ -34,10 +33,6 @@ def parse_args():
         help='Recursively search input_dir for .mkv files. Relative subdirectory '
         'layout is preserved for JSON lookup and outputs.')
     parser.add_argument(
-        '--skip-existing',
-        action='store_true',
-        help='Skip videos whose output file already exists.')
-    parser.add_argument(
         '--continue-on-error',
         action='store_true',
         help='Continue processing remaining videos if one video fails.')
@@ -48,8 +43,15 @@ def parse_args():
     parser.add_argument(
         '--allow-missing-predictions',
         action='store_true',
+        default=True,
         help='Allow frames missing from matching JSON files to pass through '
-        'without redaction.')
+        'without redaction. Enabled by default.')
+    parser.add_argument(
+        '--no-allow-missing-predictions',
+        action='store_false',
+        dest='allow_missing_predictions',
+        help='Raise an error if any frame is missing from the matching JSON '
+        'file.')
     parser.add_argument(
         '--eye-ids',
         type=int,
@@ -150,7 +152,7 @@ def main():
         if not predictions_json.is_file():
             missing_json.append((input_video, predictions_json))
             continue
-        if args.skip_existing and output_video.exists():
+        if output_video.exists():
             print(f'Skipping existing output: {output_video}')
             continue
         jobs.append((input_video, predictions_json, output_video))
