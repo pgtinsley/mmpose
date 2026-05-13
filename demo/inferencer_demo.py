@@ -271,6 +271,7 @@ def main():
     #fnames_inputs = glob.glob('/mnt/s3-videos/*.mkv')
     #print(len(fnames_inputs))
 
+    import os
     import pandas as pd
     from tqdm import tqdm
 
@@ -279,12 +280,17 @@ def main():
     fnames_inputs = [ f'/mnt/s3-videos/{fname}' for fname in df_meta['fname_mkv'] ]
 
     inferencer = MMPoseInferencer(**init_args)
-
-    for fname_input in tqdm( fnames_inputs[2:] ):
+    
+    for fname_input in tqdm( fnames_inputs[:] ):
         call_args['inputs'] = fname_input
-        # inferencer = MMPoseInferencer(**init_args)
-        for _ in inferencer(**call_args):
-            pass
+        s = fname_input.split('/')
+        fname_json = os.path.join( call_args['pred_out_dir'], s[-1].replace('.mkv','.json') )
+        # print(fname_input, fname_json)
+
+        if not os.path.exists( fname_json ):
+            inferencer = MMPoseInferencer(**init_args)
+            for _ in inferencer(**call_args):
+                pass
 
 
 if __name__ == '__main__':
