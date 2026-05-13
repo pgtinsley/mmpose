@@ -1,5 +1,6 @@
 df_meta*
 predictions*
+mkvs_deidentified*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
